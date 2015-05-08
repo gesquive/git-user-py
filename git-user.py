@@ -63,13 +63,15 @@ def parse_args():
 
     set_parser = subparsers.add_parser('set', help='Set the profile for the current project')
     set_parser.add_argument('--action', default='set', help=argparse.SUPPRESS)
-    set_parser.add_argument('--global', '-g', action='store_true', default=False,
+    set_parser.add_argument('--global', '-g', action='store_true',
+                            default=False, dest='use_global',
                             help='Apply the profile too the global config')
     set_parser.add_argument('profile_name', help='The profile to set')
 
     remove_parser = subparsers.add_parser('remove', help='Remove the profile from the currrent project')
     remove_parser.add_argument('--action', default='remove', help=argparse.SUPPRESS)
-    remove_parser.add_argument('--global', '-g', action='store_true', default=False,
+    remove_parser.add_argument('--global', '-g', action='store_true',
+                               default=False, dest='use_global',
                                help='Remove the user from the global config')
 
     # parser.add_argument('--default', action='store_true', help=argparse.SUPPRESS)
@@ -110,7 +112,7 @@ def main():
     global verbose, debug
 
     args = parse_args()
-    print(args)
+    # print(args)
     init_logging(args.verbose, args.debug)
 
 # git user set <nickname>
@@ -146,7 +148,7 @@ def main():
                 logging.info('  Add a profile with '
                              '"{} add <profile> <name> <email>"'.format(app))
                 logging.info('Type "{} --help" for more info.'.format(app))
-            for profile in profiles:
+            for profile in sorted(profiles):
                 # TODO: add color to this
                 logging.info('{}: {} <{}>'.format(profile,
                              profiles[profile]['name'],
@@ -154,8 +156,10 @@ def main():
         elif args.action == 'add' or args.action == 'edit':
             user_file.add_profile(args.profile_name, args.user_name,
                 args.user_email)
+            logging.info('Added profile "{}"'.format(args.profile_name))
         elif args.action == 'del':
             user_file.remove_profile(args.profile_name)
+            logging.info('Deleted profile "{}"'.format(args.profile_name))
         elif args.action == 'set':
             profile = user_file.get_profile(args.profile_name)
             if not profile:
@@ -164,10 +168,23 @@ def main():
                 logging.info('  "{} {} add <name> <email>"'.format(app, args.profile_name))
             else:
                 project_path = os.path.abspath(args.path)
-                set_project_user(project_path, profile['name'], profile['email'])
+                if args.use_global:
+                    set_global_user(profile['name'], profile['email'])
+                    logging.info('The global user has been set too '
+                                 '"{} <{}>"'.format(profile['name'], profile['email']))
+                else:
+                    set_project_user(project_path, profile['name'], profile['email'])
+                    logging.info('The user for the "{}" repository has been '
+                                 'set too "{} <{}>"'.format(os.path.basename(project_path),
+                                    profile['name'], profile['email']))
         elif args.action == 'remove':
             project_path = os.path.abspath(args.path)
-            #TODO: Remove project profile
+            if args.use_global:
+                unset_global_user()
+                logging.info('Removed user info from the global config')
+            else:
+                unset_project_user(project_path)
+                logging.info('Removed user info from "{}"'.format(os.path.basename(project_path)))
 
 
     except (KeyboardInterrupt, SystemExit):
@@ -214,13 +231,11 @@ def set_global_user(user, email):
     shell('git config --global user.name "{}"'.format(user))
     shell('git config --global user.email "{}"'.format(email))
 
-def unset_project_user(project_path, user, email):
-    shell('git -C "{}" config --unset user.name'.format(project_path))
-    shell('git -C "{}" config --unset user.email'.format(project_path))
+def unset_project_user(project_path):
+    shell('git -C "{}" config --remove-section user'.format(project_path))
 
-def unset_global_user(user, email):
-    shell('git config --global user.name "{}"'.format(user))
-    shell('git config --global user.email "{}"'.format(email))
+def unset_global_user():
+    shell('git config --global --remove-section user'.format(project_path))
 
 class UserFile:
     def __init__(self, path):
