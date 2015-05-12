@@ -34,6 +34,7 @@ debug = False
 app = os.path.basename(sys.argv[0])
 app = 'git user' if app == 'git-user' else app
 
+#TODO: Get parser working in python 2.7
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -68,7 +69,8 @@ def parse_args():
                             help='Apply the profile too the global config')
     set_parser.add_argument('profile_name', help='The profile to set')
 
-    remove_parser = subparsers.add_parser('remove', help='Remove the profile from the currrent project')
+    remove_parser = subparsers.add_parser('remove', aliases=['unset'],
+                                          help='Remove the profile from the current project')
     remove_parser.add_argument('--action', default='remove', help=argparse.SUPPRESS)
     remove_parser.add_argument('--global', '-g', action='store_true',
                                default=False, dest='use_global',
@@ -95,8 +97,6 @@ def parse_args():
 
 def init_logging(verbose, debug):
     console_handler = logging.StreamHandler(sys.stdout)
-    console_formatter = logging.Formatter("[%(asctime)s] %(levelname)-5.5s: %(message)s",
-                                          "%Y-%m-%d %H:%M:%S")
     console_formatter = logging.Formatter("")
     console_handler.setFormatter(console_formatter)
     logging.getLogger('').addHandler(console_handler)
@@ -114,6 +114,7 @@ def main():
     args = parse_args()
     # print(args)
     init_logging(args.verbose, args.debug)
+    colors.init()
 
 # git user set <nickname>
 # git user remove
@@ -123,34 +124,26 @@ def main():
 # git user list
     try:
         user_file = UserFile(args.config_file)
-        if 'action' not in args:
+        if 'action' not in args or args.action == 'list':
+            print('Current Project:')
             project_path = os.path.abspath(args.path)
-            logging.info("Project: {}".format(project_path))
-            project_user = get_project_user(project_path)
-            global_user = get_global_user()
-            if 'name' in project_user:
-                logging.info("Name: {}".format(project_user['name']))
-            elif 'name' in global_user:
-                logging.info("Name (global): {}".format(global_user['name']))
-            else:
-                logging.info("Name: N/A")
-            if 'email' in project_user:
-                logging.info("Email: {}".format(project_user['email']))
-            elif 'email' in global_user:
-                logging.info("Email (global): {}".format(global_user['email']))
-            else:
-                logging.info("Email: N/A")
+            print("  Path: {}".format(colors.green(project_path)))
 
-        elif args.action == 'list':
+            user_info = get_global_user(all=True)
+            nav = colors.red('N/A')
+            name = user_info['name'] if 'name' in user_info else nav
+            email = user_info['email'] if 'email' in user_info else nav
+            print("  User: {} <{}>".format(colors.green(name), colors.blue(email)))
+
             profiles = user_file.get_all_profiles()
             if len(profiles.keys()) == 0:
                 logging.info('There are no profiles in your config.')
                 logging.info('  Add a profile with '
                              '"{} add <profile> <name> <email>"'.format(app))
                 logging.info('Type "{} --help" for more info.'.format(app))
+            print('Saved Profiles:')
             for profile in sorted(profiles):
-                # TODO: add color to this
-                logging.info('{}: {} <{}>'.format(profile,
+                print('  {}: {} <{}>'.format(colors.yellow(profile),
                              profiles[profile]['name'],
                              profiles[profile]['email']))
         elif args.action == 'add' or args.action == 'edit':
@@ -192,35 +185,28 @@ def main():
     except Exception as e:
         print(traceback.format_exc())
 
-def shell(cmd):
-    return subprocess.check_output(cmd, shell=True).strip()
+def shell(command, cwd=None, seperate=True):
+    """Returns the stdout from the given command.
+    """
+    cmd = subprocess.Popen(command, shell=seperate, stdout=subprocess.PIPE,
+                           cwd=cwd)
+    res = cmd.stdout.read()
+    cmd.wait()
+    return res
 
-def get_git_user(git_config_path):
-    user_info = {}
-    if not os.path.exists(git_config_path) \
-       or not os.path.isfile(git_config_path):
-        return user_info
-    config = configparser.ConfigParser()
-    config.read(git_config_path)
-    if 'user' not in config.sections():
-        if 'include' in config.sections():
-            inc_config_path = os.path.join(os.path.dirname(git_config_path), config['include']['path'])
-            return get_git_user(inc_config_path)
-        return user_info
-    if 'name' in config['user']:
-        user_info['name'] = config['user']['name']
-    if 'email' in config['user']:
-        user_info['email'] = config['user']['email']
-    return user_info
 
-def get_project_user(project_path):
-    #TODO: Just use the git config shell command to get this data
-    git_config_path = os.path.join(project_path, '.git', 'config')
-    return get_git_user(git_config_path)
+def get_global_user(all=False):
+    info = {}
+    loc = '' if all else '--global'
 
-def get_global_user():
-    git_config_path = os.path.join(os.path.expanduser('~'), '.gitconfig')
-    return get_git_user(git_config_path)
+    name = shell('git config {} user.name'.format(loc)).decode('ascii').strip()
+    if name is not '':
+        info['name'] = name
+
+    email = shell('git config {} user.email'.format(loc)).decode('ascii').strip()
+    if email is not '':
+        info['email'] = email
+    return info
 
 
 def set_project_user(project_path, user, email):
@@ -238,6 +224,7 @@ def unset_global_user():
     shell('git config --global --remove-section user'.format(project_path))
 
 class UserFile:
+    #TODO: Make it so the default userfile path is in the global gitconfig
     def __init__(self, path):
         self.path = os.path.expanduser(path)
         self._config = configparser.ConfigParser()
@@ -276,6 +263,53 @@ class UserFile:
         with open(self.path, 'w') as configfile:
             self._config.write(configfile)
 
+
+class colors:
+    PRE = ''
+    BLUE = ''
+    GREEN = ''
+    YELLOW = ''
+    RED = ''
+    END = ''
+
+    @staticmethod
+    def init():
+        if colors.supports_color():
+            colors.PRE = '\033[95m'
+            colors.BLUE = '\033[94m'
+            colors.GREEN = '\033[92m'
+            colors.YELLOW = '\033[93m'
+            colors.RED = '\033[91m'
+            colors.END = '\033[0m'
+
+    @staticmethod
+    def blue(msg):
+        return '{}{}{}'.format(colors.BLUE, msg, colors.END)
+    @staticmethod
+    def green(msg):
+        return '{}{}{}'.format(colors.GREEN, msg, colors.END)
+    @staticmethod
+    def yellow(msg):
+        return '{}{}{}'.format(colors.YELLOW, msg, colors.END)
+    @staticmethod
+    def red(msg):
+        return '{}{}{}'.format(colors.RED, msg, colors.END)
+
+
+    @staticmethod
+    def supports_color():
+        """
+        Returns True if the running system's terminal supports color, and False
+        otherwise.
+        """
+        plat = sys.platform
+        supported_platform = plat != 'Pocket PC' and (plat != 'win32' or
+                                                      'ANSICON' in os.environ)
+        # isatty is not always implemented, #6223.
+        is_a_tty = hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
+        if not supported_platform or not is_a_tty:
+            return False
+        return True
 
 
 if __name__ == '__main__':
