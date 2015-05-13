@@ -23,13 +23,15 @@ __author__ = "Gus Esquivel"
 __copyright__ = "Copyright 2015"
 __credits__ = ["Gus Esquivel"]
 __license__ = "GPL"
-__version__ = "0.1"
+__version__ = "0.2"
 __maintainer__ = "Gus Esquivel"
 __email__ = "gesquive@gmail"
 __status__ = "Beta"
 
 verbose = False
 debug = False
+
+default_profile_path = '~/.git_profiles'
 
 app = os.path.basename(sys.argv[0])
 app = 'git user' if app == 'git-user' else app
@@ -79,7 +81,7 @@ def parse_args():
     # parser.add_argument('--default', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--path', '-p', default='.',
                         help='The project to set/get the user')
-    parser.add_argument("-c", "--config-file", default='~/.git_profiles',
+    parser.add_argument("-c", "--config-file", default=None,
                        help="The path to the config file "
                        "(default:~/.git_profiles")
     parser.add_argument("-v", "--verbose", action="store_true", dest="verbose",
@@ -179,7 +181,6 @@ def main():
                 unset_project_user(project_path)
                 logging.info('Removed user info from "{}"'.format(os.path.basename(project_path)))
 
-
     except (KeyboardInterrupt, SystemExit):
         pass
     except Exception as e:
@@ -194,7 +195,6 @@ def shell(command, cwd=None, seperate=True):
     cmd.wait()
     return res
 
-
 def get_global_user(all=False):
     info = {}
     loc = '' if all else '--global'
@@ -207,7 +207,6 @@ def get_global_user(all=False):
     if email is not '':
         info['email'] = email
     return info
-
 
 def set_project_user(project_path, user, email):
     shell('git -C "{}" config user.name "{}"'.format(project_path, user))
@@ -224,11 +223,22 @@ def unset_global_user():
     shell('git config --global --remove-section user'.format(project_path))
 
 class UserFile:
-    #TODO: Make it so the default userfile path is in the global gitconfig
     def __init__(self, path):
-        self.path = os.path.expanduser(path)
+        self.path = self._get_config_path(path)
         self._config = configparser.ConfigParser()
         self._config.read(self.path)
+
+    def _get_config_path(self, arg_path):
+        if arg_path:
+            return os.path.expanduser(arg_path)
+        # Try to get the config path from the gitconfig, if it's not there
+        #   set it and return
+        default_path = os.path.expanduser(default_profile_path)
+        config_path = shell('git config user.profiles').decode('ascii').strip()
+        if config_path is '':
+            shell('git config --global user.profiles {}'.format(default_path))
+            return default_path
+        return config_path
 
     def check_profile(self, profile):
         return profile in self._config.section()
