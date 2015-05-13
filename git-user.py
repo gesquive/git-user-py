@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # git-user.py
 # GusE 2015.04.29 V0.1
 """
@@ -23,7 +23,7 @@ __author__ = "Gus Esquivel"
 __copyright__ = "Copyright 2015"
 __credits__ = ["Gus Esquivel"]
 __license__ = "GPL"
-__version__ = "0.2"
+__version__ = "0.3"
 __maintainer__ = "Gus Esquivel"
 __email__ = "gesquive@gmail"
 __status__ = "Beta"
@@ -36,13 +36,43 @@ default_profile_path = '~/.git_profiles'
 app = os.path.basename(sys.argv[0])
 app = 'git user' if app == 'git-user' else app
 
-#TODO: Get parser working in python 2.7
 def parse_args():
+
+    # We need this function for 2.7 compatibility
+    # grabbed from: http://stackoverflow.com/a/26379693/613218
+    def set_default_subparser(self, name, args=None):
+        """default subparser selection. Call after setup, just before parse_args()
+        name: is the name of the subparser to call by default
+        args: if set is the argument list handed to parse_args()
+
+        tested with 2.7, 3.2, 3.3, 3.4
+        it works with 2.6 assuming argparse is installed
+        """
+        subparser_found = False
+        for arg in sys.argv[1:]:
+            if arg in ['-h', '--help']:  # global help if no subparser
+                break
+        else:
+            for x in self._subparsers._actions:
+                if not isinstance(x, argparse._SubParsersAction):
+                    continue
+                for sp_name in x._name_parser_map.keys():
+                    if sp_name in sys.argv[1:]:
+                        subparser_found = True
+            if not subparser_found:
+                # insert default in first position, this implies no
+                # global options without a sub_parsers specified
+                if args is None:
+                    sys.argv.insert(1, name)
+                else:
+                    args.insert(0, name)
+
+    argparse.ArgumentParser.set_default_subparser = set_default_subparser
+
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter,
                                      add_help=False)
 
-    # parser.add_argument('--action', default='get', help=argparse.SUPPRESS)
     subparsers = parser.add_subparsers(help='commands')
 
     list_parser = subparsers.add_parser('list', help='List all the saved profiles')
@@ -60,7 +90,7 @@ def parse_args():
     edit_parser.add_argument('user_name', help='The user name')
     edit_parser.add_argument('user_email', help='The user email')
 
-    delete_parser = subparsers.add_parser('delete', aliases=['del'], help='Delete a profile')
+    delete_parser = subparsers.add_parser('del', help='Delete a profile')
     delete_parser.add_argument('--action', default='del', help=argparse.SUPPRESS)
     delete_parser.add_argument('profile_name', help='The profile to delete')
 
@@ -71,14 +101,13 @@ def parse_args():
                             help='Apply the profile too the global config')
     set_parser.add_argument('profile_name', help='The profile to set')
 
-    remove_parser = subparsers.add_parser('remove', aliases=['unset'],
+    remove_parser = subparsers.add_parser('rem',
                                           help='Remove the profile from the current project')
     remove_parser.add_argument('--action', default='remove', help=argparse.SUPPRESS)
     remove_parser.add_argument('--global', '-g', action='store_true',
                                default=False, dest='use_global',
                                help='Remove the user from the global config')
 
-    # parser.add_argument('--default', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--path', '-p', default='.',
                         help='The project to set/get the user')
     parser.add_argument("-c", "--config-file", default=None,
@@ -93,6 +122,7 @@ def parse_args():
     parser.add_argument("-D", "--debug", action="store_true", dest="debug",
                        help=argparse.SUPPRESS)
 
+    parser.set_default_subparser('list')
     args = parser.parse_args()
     return args
 
@@ -127,6 +157,7 @@ def main():
     try:
         user_file = UserFile(args.config_file)
         if 'action' not in args or args.action == 'list':
+            #TODO: Need a way of letting the user know if this is a global user
             print('Current Project:')
             project_path = os.path.abspath(args.path)
             print("  Path: {}".format(colors.green(project_path)))
@@ -136,6 +167,7 @@ def main():
             name = user_info['name'] if 'name' in user_info else nav
             email = user_info['email'] if 'email' in user_info else nav
             print("  User: {} <{}>".format(colors.green(name), colors.blue(email)))
+            print('')
 
             profiles = user_file.get_all_profiles()
             if len(profiles.keys()) == 0:
@@ -143,11 +175,12 @@ def main():
                 logging.info('  Add a profile with '
                              '"{} add <profile> <name> <email>"'.format(app))
                 logging.info('Type "{} --help" for more info.'.format(app))
-            print('Saved Profiles:')
-            for profile in sorted(profiles):
-                print('  {}: {} <{}>'.format(colors.yellow(profile),
-                             profiles[profile]['name'],
-                             profiles[profile]['email']))
+            else:
+                print('Saved Profiles:')
+                for profile in sorted(profiles):
+                    print('  {}: {} <{}>'.format(colors.yellow(profile),
+                                 profiles[profile]['name'],
+                                 profiles[profile]['email']))
         elif args.action == 'add' or args.action == 'edit':
             user_file.add_profile(args.profile_name, args.user_name,
                 args.user_email)
@@ -233,20 +266,21 @@ class UserFile:
             return os.path.expanduser(arg_path)
         # Try to get the config path from the gitconfig, if it's not there
         #   set it and return
-        default_path = os.path.expanduser(default_profile_path)
+        default_path = default_profile_path
         config_path = shell('git config user.profiles').decode('ascii').strip()
         if config_path is '':
             shell('git config --global user.profiles {}'.format(default_path))
             return default_path
-        return config_path
+        return os.path.expanduser(config_path)
 
     def check_profile(self, profile):
         return profile in self._config.section()
 
     def add_profile(self, profile, name, email):
-        self._config[profile] = {}
-        self._config[profile]['name'] = name
-        self._config[profile]['email'] = email
+        if profile not in self._config.sections():
+            self._config.add_section(profile)
+        self._config.set(profile, 'name', name)
+        self._config.set(profile, 'email', email)
         self._write()
 
     edit_profile = add_profile
@@ -256,16 +290,19 @@ class UserFile:
         self._write()
 
     def get_profile(self, profile):
-        if profile in self._config:
-            return self._config[profile]
+        if profile in self._config.sections():
+            return {
+                'name': self._config.get(profile, 'name'),
+                'email': self._config.get(profile, 'email')
+            }
         return None
 
     def get_all_profiles(self):
         all = {}
         for profile in self._config.sections():
             all[profile] = {
-                'name': self._config[profile]['name'],
-                'email': self._config[profile]['email']
+                'name': self._config.get(profile, 'name'),
+                'email': self._config.get(profile, 'email')
             }
         return all
 
