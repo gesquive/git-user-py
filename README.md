@@ -36,5 +36,6 @@ If you wish to install to a different directory just change the `SDIR` value.
 Keep in mind, if you want to be able to run the script as a git sub-command (ie. run as `git substatus`) you must make the script executable and available on the `$PATH`
 
 ### TODO
- - Show a status printout in case script is called within a git directory
- - Add auto-detection of a color tty and adjust printout accordingly
+ - Add man page
+ - Add a download/install script
+ - Add update feature
