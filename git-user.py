@@ -157,12 +157,14 @@ def main():
     try:
         user_file = UserFile(args.config_file)
         if 'action' not in args or args.action == 'list':
-            #TODO: Need a way of letting the user know if this is a global user
-            print('Current Project:')
             project_path = os.path.abspath(args.path)
-            print("  Path: {}".format(colors.green(project_path)))
-
-            user_info = get_global_user(all=True)
+            user_is_local = project_has_user(project_path)
+            if user_is_local:
+                print('Project Profile:')
+                print('  Path: {}'.format(colors.green(project_path)))
+            else:
+                print('Global Profile:')
+            user_info = get_git_user(all=True)
             nav = colors.red('N/A')
             name = user_info['name'] if 'name' in user_info else nav
             email = user_info['email'] if 'email' in user_info else nav
@@ -228,7 +230,12 @@ def shell(command, cwd=None, seperate=True):
     cmd.wait()
     return res
 
-def get_global_user(all=False):
+def project_has_user(project_path):
+    name = shell('git -C {} config --local user.name'.format(project_path)).\
+                decode('ascii').strip()
+    return (name != '')
+
+def get_git_user(all=False):
     info = {}
     loc = '' if all else '--global'
 
