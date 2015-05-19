@@ -4,7 +4,7 @@
 """
 Allows you to save multiple user profiles and set them as project defaults
 """
-__version__ = "1.1"
+__version__ = "1.2"
 
 import sys
 import os
@@ -113,7 +113,7 @@ def parse_args():
 
     parser.add_argument('--path', '-p', default='.',
                         help='The project to set/get the user')
-    parser.add_argument("-c", "--config-file", default="~/.git_profiles",
+    parser.add_argument("-c", "--config-file", default=None,
                        help="The path to the config file "
                        "(default:~/.git_profiles")
     parser.add_argument("-v", "--verbose", action="store_true", dest="verbose",
@@ -276,11 +276,11 @@ class UserFile:
             return os.path.expanduser(arg_path)
         # Try to get the config path from the gitconfig, if it's not there
         #   set it and return
-        default_path = default_profile_path
         config_path = shell('git config user.profiles').decode('ascii').strip()
-        if config_path is '':
+        if len(config_path) == 0:
+            default_path = default_profile_path
             shell('git config --global user.profiles {}'.format(default_path))
-            return default_path
+            config_path = default_path
         return os.path.expanduser(config_path)
 
     def check_profile(self, profile):
