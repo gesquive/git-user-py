@@ -23,6 +23,8 @@ optional arguments:
   -v, --verbose         Writes all messages to console.
   -h, --help            Show this help message and exit.
   -V, --version         show program's version number and exit
+  -u, --update          Checks server for an update, replaces the current
+                        version if there is a newer version available.
 ```
 
 ### Installation Instructions
@@ -38,4 +40,3 @@ Keep in mind, if you want to be able to run the script as a git sub-command (ie.
 ### TODO
  - Add man page
  - Add a download/install script
- - Add update feature
