@@ -366,7 +366,7 @@ Compares two version number strings
         http_stream = urllib.urlopen(dl_url)
         update_file = http_stream.read(256)
         http_stream.close()
-    except IOError, (errno, strerror):
+    except IOError:
         logging.exception("Unable to retrieve version data")
         return
 
@@ -434,20 +434,20 @@ Compares two version number strings
 
         http_stream.close()
         dl_file.close()
-    except IOError, (errno, strerror):
+    except IOError:
         logging.exception("Download failed")
         return
 
     try:
         os.rename(app_path, backup_path)
-    except OSError, (errno, strerror):
+    except OSError:
         logging.exception()("Unable to rename {} to {}: ({}) {}"
                             "".format(app_path, backup_path, errno, strerror))
         return
 
     try:
         os.rename(dl_path, app_path)
-    except OSError, (errno, strerror):
+    except OSError:
         logging.exception("Unable to rename {} to {}: ({}) {}"
                           "".format(dl_path, app_path, errno, strerror))
         return
@@ -457,7 +457,7 @@ Compares two version number strings
         shutil.copymode(backup_path, app_path)
     except:
         pass
-        os.chmod(app_path, 0755)
+        os.chmod(app_path, 0o755)
 
     logging.info("New version installed as {}".format(app_path))
     logging.info("(previous version backed up to {})".format(backup_path))
